@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Disruption Thresholds in a 2-D Ising Model (Retro B/W)</title>
+<style>
+  :root {
+    --bg: #000; --fg: #fff; --dim: #bbb; --accent: #fff;
+    --grid-border: #555; --pinned: #888;
+    --mono: ui-monospace, Menlo, Consolas, "Cascadia Mono","Courier New", monospace;
+  }
+  html, body { background: var(--bg); color: var(--fg); margin:0; font-family: var(--mono); }
+  header, main, footer { max-width: 980px; margin: 0 auto; padding: 16px; }
+  header { border-bottom: 1px solid var(--fg); }
+  h1 { margin: 0 0 8px 0; font-size: 22px; letter-spacing: .5px; }
+  h2 { font-size: 18px; margin: 18px 0 8px; }
+  h3 { font-size: 15px; margin: 14px 0 6px; color: var(--dim); }
+  p { line-height: 1.5; color: var(--dim); }
+  .row { display:flex; flex-wrap: wrap; gap: 16px; }
+  .card { border: 1px solid var(--fg); padding: 12px; flex: 1 1 320px; }
+  .controls { display: grid; grid-template-columns: repeat(2,minmax(160px,1fr)); gap: 8px 12px; }
+  label { font-size: 12px; color: var(--dim); display:block; }
+  input[type="number"], input[type="range"], select {
+    width: 100%; padding: 6px; background: #000; color: #fff; border: 1px solid #fff;
+  }
+  .btnbar { display:flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  button {
+    background: #000; color:#fff; border: 1px solid #fff; padding: 6px 10px; cursor: pointer;
+  }
+  button:hover { background:#111; }
+  .gridWrap { border:1px solid var(--fg); padding: 4px; overflow:auto; background:#111; }
+  .grid { display:grid; gap:1px; background: var(--grid-border); }
+  .cell { width: 12px; height: 12px; background:#000; }
+  .plus { background:#fff; }
+  .minus { background:#000; }
+  .pinned { outline: 1px dashed var(--pinned); outline-offset: -1px; }
+  .meta { font-size: 12px; color: var(--dim); margin-top:6px; }
+  details { border:1px solid var(--fg); padding: 10px; }
+  details > summary { cursor:pointer; font-weight:bold; color:#fff; }
+  table { width:100%; border-collapse: collapse; font-size: 12px; margin-top:8px; }
+  th, td { border:1px solid #666; padding:6px; text-align:center; }
+  .muted { color:#888; }
+  .ok { color:#fff; }
+  .warn { color:#fffd8a; }
+  .bad { color:#ffa0a0; }
+  .mono { font-family: var(--mono); }
+  .legend { display:flex; gap:12px; align-items:center; font-size:12px; color:var(--dim); margin-top:6px;}
+  .swatch { display:inline-block; width:12px; height:12px; border:1px solid #666; margin-right:4px;}
+  .swatch.plus { background:#fff;}
+  .swatch.minus { background:#000;}
+  .swatch.pin { background:#222; outline:1px dashed var(--pinned); outline-offset:-1px;}
+  .hr { height:1px; background:#333; margin:12px 0;}
+  footer { border-top: 1px solid var(--fg); color: var(--dim); font-size:12px; }
+  code { background:#111; padding:2px 4px; border:1px solid #333; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Disruption Thresholds in a 2-D Ising Model</h1>
+  <p>
+    We model a population where each site chooses between two rules (&#43;1 / &#8722;1). A random fraction
+    <code>p</code> of sites are <em>fixed</em> at &#8722;1 (disruptors that never update). With local alignment (coupling <code>J&gt;0</code>)
+    and a small top-down push toward &#43;1 (field <code>h&gt;0</code>), we observe: a few percent fixed sites cause a
+    <strong>big slow-down</strong>, and around 5–10% often yields <strong>breakdown</strong> (no strong consensus).
+  </p>
+</header>
+
+<main>
+  <section class="row">
+    <div class="card" style="flex:2 1 520px;">
+      <h2>Live Demo (no &lt;canvas&gt;, CSS grid)</h2>
+      <div class="controls">
+        <div>
+          <label>Lattice size L</label>
+          <input id="L" type="number" value="24" min="8" max="120" step="1">
+        </div>
+        <div>
+          <label>Temperature T</label>
+          <input id="T" type="number" value="2.0" step="0.05" min="0.1" max="5">
+        </div>
+        <div>
+          <label>Field h (push to +1)</label>
+          <input id="h" type="number" value="0.10" step="0.02" min="0" max="1">
+        </div>
+        <div>
+          <label>Pinned fraction p (fixed −1)</label>
+          <input id="p" type="number" value="0.05" step="0.01" min="0" max="0.5">
+        </div>
+        <div>
+          <label>Sweeps per frame</label>
+          <input id="spf" type="number" value="1" min="1" max="50" step="1">
+        </div>
+        <div>
+          <label>Convergence target (m ≥)</label>
+          <input id="mstar" type="number" value="0.9" min="0.5" max="1" step="0.05">
+        </div>
+      </div>
+      <div class="btnbar">
+        <button id="init">Init / Reset</button>
+        <button id="pin">Re-pin disruptors</button>
+        <button id="start">Start</button>
+        <button id="stop">Stop</button>
+        <button id="step">Step × 10</button>
+        <button id="rand">Randomize spins</button>
+      </div>
+      <div class="legend">
+        <span><span class="swatch plus"></span>+1</span>
+        <span><span class="swatch minus"></span>−1</span>
+        <span><span class="swatch pin"></span>fixed (disruptor)</span>
+      </div>
+      <div class="hr"></div>
+      <div class="gridWrap"><div id="grid" class="grid"></div></div>
+      <div class="meta">
+        <span id="meta">m = 0.00 | pinned = 0 | sweeps = 0 | running = false</span>
+      </div>
+    </div>
+
+    <div class="card" style="flex:1 1 320px;">
+      <h2>Model, Updates, Convergence</h2>
+      <p class="mono">
+        Energy: E = −J ∑⟨ij⟩ sᵢ sⱼ − h ∑ᵢ sᵢ &nbsp; with sᵢ ∈ {−1,+1}, J=1, periodic BCs.<br/>
+        Metropolis: flip sᵢ → −sᵢ with prob min{1, exp(−ΔE/T)} (unless fixed).<br/>
+        Magnetization: m = (1/N)∑ sᵢ. Convergence: m ≥ m* for K frames.
+      </p>
+      <div class="hr"></div>
+      <label>Frames required above threshold K</label>
+      <input id="K" type="number" value="6" min="1" max="50" step="1" />
+      <p class="muted">Tip: try L=24, T≈2.0, h=0.1. Increase p from 0 → 0.12 and watch slow-down → breakdown.</p>
+    </div>
+  </section>
+
+  <section class="row">
+    <div class="card" style="flex: 2 1 520px;">
+      <h2>Experiment Runner (size × disruption)</h2>
+      <p>Run quick sweeps over pinned fraction <code>p</code> and lattice size <code>L</code>. We report:</p>
+      <ul>
+        <li><strong>Success rate</strong>: reached <code>m ≥ m*</code> within the sweep budget.</li>
+        <li><strong>Avg sweeps</strong> (on successes) to hit the target.</li>
+      </ul>
+      <div class="controls">
+        <div>
+          <label>Sizes (comma-sep)</label>
+          <input id="sizes" type="text" value="16,24,32">
+        </div>
+        <div>
+          <label>p list (comma-sep)</label>
+          <input id="plist" type="text" value="0,0.02,0.05,0.08,0.10,0.12">
+        </div>
+        <div>
+          <label>Trials per (L,p)</label>
+          <input id="trials" type="number" value="3" min="1" max="20">
+        </div>
+        <div>
+          <label>Max sweeps per config</label>
+          <input id="maxsw" type="number" value="700" min="50" max="5000" step="50">
+        </div>
+      </div>
+      <div class="btnbar">
+        <button id="runExp">Run Sweep</button>
+        <button id="clearExp">Clear Results</button>
+      </div>
+      <div id="expStatus" class="meta">ready.</div>
+      <div id="expTables"></div>
+      <details style="margin-top:8px;">
+        <summary>How to read the thresholds</summary>
+        <p class="muted">
+          <strong>Big slow-down p*</strong>: first p where average time ≥ 2× baseline (p=0).<br/>
+          <strong>Breakdown p†</strong>: first p where success rate = 0 (no runs hit the target within the budget).
+          On larger L, both thresholds tend to shift to smaller p and the transition sharpens.
+        </p>
+      </details>
+    </div>
+
+    <div class="card" style="flex:1 1 320px;">
+      <h2>Observed Pattern (qualitative)</h2>
+      <ul>
+        <li><strong>Small p (≈1–3%)</strong>: convergence slows markedly (≈2× baseline).</li>
+        <li><strong>Moderate p (≈5–10%)</strong>: frequent failure to reach strong consensus → practical breakdown.</li>
+        <li><strong>Increasing L</strong>: slow-down starts earlier and the drop in success rate steepens.</li>
+      </ul>
+      <p class="muted">Exact numbers depend on T, h, L, the definition of “converged,” and runtime budget.</p>
+    </div>
+  </section>
+</main>
+
+<footer>
+   White cells are +1, black cells are −1, dashed outline marks fixed disruptors (−1).
+</footer>
+
+<script>
+/*** Utilities ***/
+const rnd = (min, max) => Math.random() * (max - min) + min;
+const choice = arr => arr[(Math.random() * arr.length) | 0];
+
+function clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
+
+/*** Ising Lattice ***/
+class Ising {
+  constructor(L, T=2.0, h=0.1, p=0.05) {
+    this.L = L; this.N = L*L;
+    this.T = T; this.h = h; this.p = p;
+    this.J = 1.0;
+    this.s = new Int8Array(this.N);   // spins ±1
+    this.pin = new Uint8Array(this.N);// 1 if fixed (−1), else 0
+    this.resetSpins();
+    this.repin(); // create pinned mask & set pinned to −1
+  }
+  idx(i,j){
+    const L = this.L;
+    i = (i+L)%L; j = (j+L)%L;
+    return i*L + j;
+  }
+  resetSpins(){
+    for(let i=0;i<this.N;i++) this.s[i] = Math.random()<0.5 ? -1 : +1;
+  }
+  repin(){
+    const L=this.L;
+    for(let i=0;i<this.N;i++){
+      this.pin[i] = (Math.random() < this.p) ? 1 : 0;
+      if(this.pin[i]) this.s[i] = -1; // force disruptors to −1
+    }
+  }
+  magnetization(){
+    let sum=0;
+    for(let i=0;i<this.N;i++) sum += this.s[i];
+    return sum/this.N;
+  }
+  sumNN(i,j){
+    const L=this.L;
+    const up = this.s[this.idx(i-1,j)];
+    const dn = this.s[this.idx(i+1,j)];
+    const lf = this.s[this.idx(i,j-1)];
+    const rt = this.s[this.idx(i,j+1)];
+    return up+dn+lf+rt;
+  }
+  // One Metropolis sweep = N attempted flips on unfixed sites
+  sweep(){
+    const L=this.L, N=this.N, T=this.T, J=this.J, h=this.h;
+    for(let t=0;t<N;t++){
+      const i = (Math.random()*L)|0;
+      const j = (Math.random()*L)|0;
+      const idx = this.idx(i,j);
+      if(this.pin[idx]) continue; // fixed site
+      const s = this.s[idx];
+      const sumnn = this.sumNN(i,j);
+      const dE = 2 * s * (J*sumnn + h);
+      if(dE <= 0 || Math.random() < Math.exp(-dE / T)){
+        this.s[idx] = -s;
+      }
+    }
+  }
+}
+
+/*** Grid View (CSS grid, no <canvas>) ***/
+class GridView {
+  constructor(root, L){
+    this.root = root;
+    this.resize(L);
+  }
+  resize(L){
+    this.L = L;
+    this.root.innerHTML = '';
+    this.root.style.gridTemplateColumns = `repeat(${L}, 12px)`;
+    this.cells = Array.from({length: L*L}, () => {
+      const c = document.createElement('div');
+      c.className = 'cell';
+      this.root.appendChild(c);
+      return c;
+    });
+  }
+  render(spins, pins){
+    const N = this.cells.length;
+    for(let i=0;i<N;i++){
+      const c = this.cells[i];
+      const s = spins[i];
+      c.className = 'cell ' + (s>0 ? 'plus' : 'minus') + (pins && pins[i] ? ' pinned' : '');
+    }
+  }
+}
+
+/*** Wire up UI ***/
+const el = s => document.querySelector(s);
+const gridEl = el('#grid');
+const metaEl = el('#meta');
+
+let L = parseInt(el('#L').value,10);
+let T = parseFloat(el('#T').value);
+let H = parseFloat(el('#h').value);
+let P = parseFloat(el('#p').value);
+let SPF = parseInt(el('#spf').value,10);
+let MSTAR = parseFloat(el('#mstar').value);
+let KREQ = parseInt(el('#K').value,10);
+
+let ising = new Ising(L, T, H, P);
+let view  = new GridView(gridEl, L);
+view.render(ising.s, ising.pin);
+
+let running = false, rafId = null, sweeps=0, overCount=0;
+
+function refreshParams(){
+  L = clamp(parseInt(el('#L').value,10)||24, 8, 200);
+  T = parseFloat(el('#T').value)||2.0;
+  H = parseFloat(el('#h').value)||0.1;
+  P = clamp(parseFloat(el('#p').value)||0, 0, 0.9);
+  SPF = clamp(parseInt(el('#spf').value,10)||1, 1, 100);
+  MSTAR = clamp(parseFloat(el('#mstar').value)||0.9, 0.5, 1.0);
+  KREQ = clamp(parseInt(el('#K').value,10)||6, 1, 100);
+}
+
+function init(){
+  refreshParams();
+  ising = new Ising(L, T, H, P);
+  if(view.L !== L) view.resize(L);
+  view.render(ising.s, ising.pin);
+  sweeps = 0; overCount = 0;
+  updateMeta();
+}
+
+function updateMeta(){
+  const m = ising.magnetization().toFixed(3);
+  const pinned = ising.pin.reduce((a,b)=>a+b,0);
+  metaEl.textContent = `m = ${m} | pinned = ${pinned} | sweeps = ${sweeps} | running = ${running}`;
+}
+
+function frame(){
+  for(let k=0;k<SPF;k++){ ising.sweep(); sweeps++; }
+  const m = ising.magnetization();
+  if(m >= MSTAR) overCount++; else overCount = 0;
+  view.render(ising.s, ising.pin);
+  updateMeta();
+  if(running) rafId = requestAnimationFrame(frame);
+}
+
+el('#init').onclick = init;
+el('#pin').onclick = () => { refreshParams(); ising.p = P; ising.repin(); sweeps=0; overCount=0; view.render(ising.s, ising.pin); updateMeta(); };
+el('#rand').onclick = () => {
+  ising.resetSpins();
+  // enforce "fixed = −1" on already-pinned sites
+  for (let i = 0; i < ising.N; i++) if (ising.pin[i]) ising.s[i] = -1;
+  sweeps = 0; overCount = 0;
+  view.render(ising.s, ising.pin);
+  updateMeta();
+};
+
+el('#start').onclick = () => { refreshParams(); ising.T=T; ising.h=H; running=true; cancelAnimationFrame(rafId); rafId = requestAnimationFrame(frame); };
+el('#stop').onclick  = () => { running=false; cancelAnimationFrame(rafId); updateMeta(); };
+el('#step').onclick  = () => { for(let i=0;i<10;i++) ising.sweep(); sweeps+=10; view.render(ising.s, ising.pin); updateMeta(); };
+
+/*** Experiment Runner ***/
+function parseList(str, mapper){
+  return str.split(',').map(s=>s.trim()).filter(s=>s.length).map(mapper);
+}
+
+function runSingleConfig(L, T, h, p, maxSweeps, mstar, kreq){
+  const sim = new Ising(L, T, h, p);
+  let sweeps = 0, hit = 0;
+  while(sweeps < maxSweeps){
+    sim.sweep(); sweeps++;
+    if(sim.magnetization() >= mstar) { hit++; if(hit >= kreq) return { ok:true, sweeps }; }
+    else hit = 0;
+  }
+  return { ok:false, sweeps: null };
+}
+
+function addTable(title, rows){
+  const wrap = document.createElement('div');
+  const h = document.createElement('h3'); h.textContent = title;
+  const tbl = document.createElement('table');
+  tbl.innerHTML = `
+    <thead>
+      <tr><th>L</th><th>p</th><th>Success rate</th><th>Avg sweeps (succ)</th><th>Median sweeps (succ)</th></tr>
+    </thead>
+    <tbody></tbody>`;
+  const tb = tbl.querySelector('tbody');
+  rows.forEach(r=>{
+    const tr = document.createElement('tr');
+    const cls = r.success===0 ? 'bad' : (r.success<1 ? 'warn' : 'ok');
+    tr.innerHTML = `
+      <td>${r.L}</td>
+      <td>${(+r.p).toFixed(3)}</td>
+      <td class="${cls}">${r.success.toFixed(2)}</td>
+      <td>${isFinite(r.avg) ? r.avg.toFixed(1) : '<span class="muted">—</span>'}</td>
+      <td>${isFinite(r.med) ? r.med.toFixed(1) : '<span class="muted">—</span>'}</td>
+    `;
+    tb.appendChild(tr);
+  });
+  wrap.appendChild(h); wrap.appendChild(tbl);
+  return wrap;
+}
+
+function thresholdsFrom(rows){
+  // rows: same L with increasing p
+  const arr = rows.slice().sort((a,b)=>a.p-b.p);
+  const base = arr.find(r=>r.p===0);
+  let slow=null, fail=null;
+  if(base && isFinite(base.avg)){
+    for(const r of arr){
+      if(r.p>0 && isFinite(r.avg) && r.avg >= 2*base.avg){ slow = r.p; break; }
+    }
+  }
+  for(const r of arr){
+    if(r.success===0){ fail = r.p; break; }
+  }
+  return { slow, fail };
+}
+
+el('#runExp').onclick = async () => {
+  const sizes = parseList(el('#sizes').value, s=>parseInt(s,10)).filter(n=>n>0);
+  const plist = parseList(el('#plist').value, s=>parseFloat(s)).filter(x=>x>=0 && x<=0.9);
+  const trials = clamp(parseInt(el('#trials').value,10)||3, 1, 50);
+  const maxsw = clamp(parseInt(el('#maxsw').value,10)||700, 50, 10000);
+  refreshParams(); // for T, h, mstar, KREQ
+  el('#expStatus').textContent = 'running…';
+  const resultsByL = new Map();
+
+  // Keep UI responsive
+  for(const L of sizes){
+    const rows = [];
+    for(const p of plist){
+      let succ=0, times=[];
+      for(let t=0;t<trials;t++){
+        const out = runSingleConfig(L, T, H, p, maxsw, MSTAR, KREQ);
+        if(out.ok){ succ++; times.push(out.sweeps); }
+        await new Promise(r=>setTimeout(r,0)); // yield
+      }
+      times.sort((a,b)=>a-b);
+      const avg = times.length ? times.reduce((a,b)=>a+b,0)/times.length : NaN;
+      const med = times.length ? times[(times.length-1)>>1] : NaN;
+      rows.push({L, p, success: succ/trials, avg, med});
+      el('#expStatus').textContent = `running… L=${L}, p=${p.toFixed(3)}`;
+    }
+    resultsByL.set(L, rows);
+  }
+
+  // Render tables & thresholds
+  const host = el('#expTables');
+  const block = document.createElement('div');
+  block.innerHTML = '';
+  for(const [L, rows] of resultsByL.entries()){
+    block.appendChild(addTable(`Results for L=${L}`, rows));
+    const th = thresholdsFrom(rows);
+    const pSlow = (th.slow!=null) ? th.slow.toFixed(3) : '—';
+    const pFail = (th.fail!=null) ? th.fail.toFixed(3) : '—';
+    const note = document.createElement('div');
+    note.className = 'meta';
+    note.textContent = `Estimated thresholds — big slow-down p* ≈ ${pSlow}; breakdown p† ≈ ${pFail}`;
+    block.appendChild(note);
+    const divider = document.createElement('div'); divider.className='hr'; block.appendChild(divider);
+  }
+  host.innerHTML = '';
+  host.appendChild(block);
+  el('#expStatus').textContent = 'done.';
+};
+
+el('#clearExp').onclick = () => {
+  el('#expTables').innerHTML = '';
+  el('#expStatus').textContent = 'cleared.';
+};
+
+// initialize once
+init();
+</script>
+</body>
+</html>
+
