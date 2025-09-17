@@ -1,4 +1,4 @@
-# Disruption Thresholds in a 2‑D Ising Model (Retro B/W)
+# Disruption Thresholds in a 2‑D Ising Model
 
 A compact, dependency‑free exploration of how **small fixed minorities** can stall or prevent consensus in a locally aligning system. The model is a 2‑D ferromagnetic Ising lattice with a fraction `p` of permanently negative spins (“disruptors”) that never update.
 
